@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace CL\Sitemap\Tests\DependencyInjection\Compiler;
 
 use CL\Bundle\MailerBundle\DependencyInjection\Compiler\RegisterMailerTypesPass;
-use CL\Sitemap\Bridge\Symfony\DependencyInjection\Compiler\RegisterSitemapTypesPass;
+use CL\Sitemap\Bridge\Symfony\DependencyInjection\Compiler\RegisterTypesPass;
 use Matthias\SymfonyDependencyInjectionTest\PhpUnit\AbstractCompilerPassTestCase;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 
-class RegisterSitemapTypesPassTest extends AbstractCompilerPassTestCase
+class RegisterTypesPassTest extends AbstractCompilerPassTestCase
 {
     const REGISTRY_ID = 'my_type_registry_service_id';
     const TYPE_ID = 'my_type_service_id';
@@ -53,6 +53,6 @@ class RegisterSitemapTypesPassTest extends AbstractCompilerPassTestCase
      */
     protected function registerCompilerPass(ContainerBuilder $container)
     {
-        $container->addCompilerPass(new RegisterSitemapTypesPass(self::REGISTRY_ID, self::TAG_NAME));
+        $container->addCompilerPass(new RegisterTypesPass(self::REGISTRY_ID, self::TAG_NAME));
     }
 }

@@ -12,7 +12,7 @@ use Symfony\Component\DependencyInjection\Reference;
  * Compiler pass that can be used to register sitemap types
  * using the registry and tag of your choice.
  */
-class RegisterSitemapTypesPass implements CompilerPassInterface
+class RegisterTypesPass implements CompilerPassInterface
 {
     /**
      * @var string
