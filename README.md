@@ -1,4 +1,9 @@
-# Sitemap
+## Sitemap
+
+[![Build Status](https://travis-ci.org/cleentfaar/sitemap.svg?branch=master)](https://travis-ci.org/cleentfaar/sitemap)
+[![Scrutinizer](https://img.shields.io/scrutinizer/g/cleentfaar/sitemap.svg)]()
+[![Scrutinizer Coverage](https://img.shields.io/scrutinizer/coverage/g/cleentfaar/sitemap.svg)]()
+[![Github All Releases](https://img.shields.io/github/downloads/cleentfaar/sitemap/total.svg)]()
 
 Flexible library for generating XML sitemaps from any source to any filesystem.
 
@@ -6,22 +11,21 @@ For more information about the actual XML protocol, check out
 the [sitemap.org documentation](https://sitemap.org)
 
 
-### Features
+#### Features
 
 - Supports a lot of filesystems (uses the [Gaufrette abstraction layer](https://knplabs.github.io/Gaufrette/))
 - Generates XML files with automatic rotation (preventing too many URLs or filesize limit being reached)
 - Automatically lists all generated files into a single 'index' XML (to be [submitted to search engines](https://www.google.com/webmasters/tools/sitemap-list))
 
 
-### Documentation
+#### Documentation
 1. [Getting started](docs/getting-started.md)
 1. [Symfony bridge](docs/symfony-bridge.md)
 1. [Contributing](docs/contributing.md) 
 
 
-### FAQ
-
-#### Should I generate XML sitemaps for my site?
+#### FAQ
+##### Should I generate XML sitemaps for my site?
 
 Google mentions the following applicable cases for having sitemap XMLs (see https://support.google.com/webmasters/answer/156184):
 
