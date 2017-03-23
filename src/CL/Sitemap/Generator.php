@@ -12,7 +12,6 @@ use CL\Sitemap\Event\TypeFinishedEvent;
 use CL\Sitemap\Event\TypeStartedEvent;
 use CL\Sitemap\Writer\IndexWriter;
 use CL\Sitemap\Writer\TypeWriter;
-use Closure;
 use Gaufrette\Filesystem;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
@@ -41,7 +40,7 @@ class Generator
     private $typeRegistry;
 
     /**
-     * @var Closure
+     * @var IndexEntryResolverInterface
      */
     private $indexEntryResolver;
 
