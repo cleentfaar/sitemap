@@ -20,7 +20,9 @@
   },
   "require-dev": {
     "phpunit/phpunit": "^5.7|^6.0",
-    "friendsofphp/php-cs-fixer": "^2.0"
+    "friendsofphp/php-cs-fixer": "^2.0",
+    "symfony/dependency-injection": "^3.0",
+    "matthiasnoback/symfony-dependency-injection-test": "^2.0"
   },
   "autoload": {
     "psr-4": {
@@ -29,8 +31,8 @@
   },
   "autoload-dev": {
     "psr-4": {
-      "CL\\Sitemap\\Test\\": "tests/CL/Sitemap/Test",
-      "CL\\Sitemap\\Tests\\": "tests/CL/Sitemap/Tests"
+      "CL\\Sitemap\\Test\\": "tests/src/CL/Sitemap/Test",
+      "CL\\Sitemap\\Tests\\": "tests/src/CL/Sitemap/Tests"
     }
   }
 }

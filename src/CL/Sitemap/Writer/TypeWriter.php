@@ -11,13 +11,8 @@ use Gaufrette\Stream;
 use Gaufrette\StreamMode;
 use RuntimeException;
 
-class TypeWriter
+class TypeWriter implements WriterInterface
 {
-    const DEFAULT_MAX_NUMBER_OF_URLS = 49000; // 50000 URLs is the limit, using 49000 to be sure
-    const DEFAULT_MAX_FILESIZE = 9; // 10 megabytes is the limit, using 9 to be sure
-    const TEMPORARY_EXTENSION = 'xml.tmp';
-    const PERMANENT_EXTENSION = 'xml';
-
     /**
      * @var Filesystem
      */
@@ -69,16 +64,26 @@ class TypeWriter
     private $finished = false;
 
     /**
+     * @var int
+     */
+    private $maxEntryLimit;
+
+    /**
+     * @var float
+     */
+    private $maxSizeLimit;
+
+    /**
      * @param Filesystem    $filesystem
      * @param TypeInterface $type
-     * @param int           $maxUrlLimit
-     * @param int           $maxSizeLimit
+     * @param int           $maxEntryLimit
+     * @param float         $maxSizeLimit
      */
     public function __construct(
         Filesystem $filesystem,
         TypeInterface $type,
-        int $maxUrlLimit = self::DEFAULT_MAX_NUMBER_OF_URLS,
-        int $maxSizeLimit = self::DEFAULT_MAX_FILESIZE
+        int $maxEntryLimit = self::DEFAULT_MAX_NUMBER_OF_ENTRIES,
+        float $maxSizeLimit = self::DEFAULT_MAX_FILESIZE
     ) {
         $this->rootDir = $type->getName();
 
@@ -89,8 +94,13 @@ class TypeWriter
         $this->filesystem = $filesystem;
         $this->type = $type;
         $this->path = $this->getPath(0);
+        $this->maxEntryLimit = $maxEntryLimit;
+        $this->maxSizeLimit = $maxSizeLimit;
     }
 
+    /**
+     * @inheritdoc
+     */
     public function start()
     {
         if ($this->started) {
@@ -104,7 +114,7 @@ class TypeWriter
     }
 
     /**
-     * @param Entry $entry
+     * @inheritdoc
      */
     public function write(Entry $entry)
     {
@@ -129,18 +139,10 @@ class TypeWriter
         ++$this->urlsAdded[$this->path];
     }
 
-    private function rotate()
-    {
-        $this->stream->close();
-
-        ++$this->partNumber;
-
-        $this->path = $this->getPath($this->partNumber);
-
-        $this->stream = $this->createStream();
-    }
-
-    public function finish()
+    /**
+     * @inheritdoc
+     */
+    public function finish(): array
     {
         if ($this->finished) {
             throw new RuntimeException('You must call start() first');
@@ -152,45 +154,23 @@ class TypeWriter
 
         $this->stream->close();
 
-        // add headers and footers to all written (tmp) files
-        foreach ($this->writtenPaths as $path) {
-            $newContent = '';
-            $newContent .= $this->renderHeader();
-            $newContent .= $this->filesystem->read($path);
-            $newContent .= $this->renderFooter();
-
-            $this->filesystem->write($path, $newContent, true);
-        }
-
-        $this->writtenPaths = [];
-
-        // TODO remove when vendor's bugfix gets released (https://github.com/KnpLabs/Gaufrette/pull/316)
-        $this->filesystem->clearFileRegister();
-
-        // remove all current xml files for this type
-        foreach ($this->findPartPaths() as $key) {
-            if ($this->pathHasExtension($key, self::PERMANENT_EXTENSION)) {
-                $this->filesystem->delete($key);
-            }
-        }
-
-        // TODO remove when vendor's bugfix gets released (https://github.com/KnpLabs/Gaufrette/pull/316)
-        //$this->filesystem->clearFileRegister();
-
-        // rename all newly written .xml.tmp files to .xml
-        foreach ($this->findPartPaths() as $key) {
-            if ($this->pathHasExtension($key, self::TEMPORARY_EXTENSION)) {
-                // remove the .tmp suffix
-                $newPath = $this->replaceExtension($key);
-
-                $this->filesystem->rename($key, $newPath);
-            }
-        }
-
-        // TODO remove when vendor's bugfix gets released (https://github.com/KnpLabs/Gaufrette/pull/316)
-        $this->filesystem->clearFileRegister();
-
+        $this->applyHeadersAndFooters();
+        $this->removeExistingPermanentParts();
+        $permanentPaths = $this->makeTemporaryPartsPermanent();
         $this->finished = true;
+
+        return $permanentPaths;
+    }
+
+    private function rotate()
+    {
+        $this->stream->close();
+
+        ++$this->partNumber;
+
+        $this->path = $this->getPath($this->partNumber);
+
+        $this->stream = $this->createStream();
     }
 
     /**
@@ -247,7 +227,7 @@ EOL;
         $location = $entry->getLocation()->toString();
         $changeFrequency = $entry->getChangeFrequency() ? $entry->getChangeFrequency()->toString() : null;
         $priority = $entry->getPriority() ? $entry->getPriority()->toFloat() : null;
-        $lastModified = $entry->getLastModified() ? $entry->getLastModified()->format('Y-m-d') : null;
+        $lastModified = $entry->getLastModified() ? $entry->getLastModified()->toString() : null;
 
         $entryXml = <<<EOL
 <url>
@@ -299,7 +279,7 @@ EOL;
             return false;
         }
 
-        return $this->urlsAdded[$this->path] >= self::DEFAULT_MAX_NUMBER_OF_URLS;
+        return $this->urlsAdded[$this->path] >= $this->maxEntryLimit;
     }
 
     /**
@@ -309,7 +289,7 @@ EOL;
     {
         $size = $this->stream->stat()['size'];
 
-        return $size / (1024 * 1024) >= self::DEFAULT_MAX_FILESIZE;
+        return $size / (1024 * 1024) >= $this->maxSizeLimit;
     }
 
     /**
@@ -317,7 +297,7 @@ EOL;
      */
     private function findPartPaths(): array
     {
-        return $this->filesystem->listKeys($this->rootDir.'/')['keys'];
+        return $this->filesystem->listKeys($this->rootDir . '/')['keys'];
     }
 
     /**
@@ -342,5 +322,49 @@ EOL;
     private function pathHasExtension(string $path, string $extension): bool
     {
         return substr($path, -(strlen($extension))) === $extension;
+    }
+
+    private function applyHeadersAndFooters()
+    {
+        foreach ($this->writtenPaths as $path) {
+            $newContent = '';
+            $newContent .= $this->renderHeader();
+            $newContent .= $this->filesystem->read($path);
+            $newContent .= $this->renderFooter();
+
+            $this->filesystem->write($path, $newContent, true);
+        }
+
+        $this->writtenPaths = [];
+    }
+
+    private function removeExistingPermanentParts()
+    {
+        foreach ($this->findPartPaths() as $key) {
+            if ($this->pathHasExtension($key, static::PERMANENT_EXTENSION)) {
+                $this->filesystem->delete($key);
+            }
+        }
+    }
+
+    /**
+     * @return string[]
+     */
+    private function makeTemporaryPartsPermanent(): array
+    {
+        $paths = [];
+
+        foreach ($this->findPartPaths() as $key) {
+            if ($this->pathHasExtension($key, static::TEMPORARY_EXTENSION)) {
+                // remove the .tmp suffix
+                $newPath = $this->replaceExtension($key);
+
+                $this->filesystem->rename($key, $newPath);
+
+                $paths[] = $newPath;
+            }
+        }
+
+        return $paths;
     }
 }

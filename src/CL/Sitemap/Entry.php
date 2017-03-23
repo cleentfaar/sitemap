@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace CL\Sitemap;
 
 use CL\Sitemap\Entry\ChangeFrequency;
+use CL\Sitemap\Entry\LastModified;
 use CL\Sitemap\Entry\Location;
 use CL\Sitemap\Entry\Priority;
-use DateTime;
 
 class Entry
 {
@@ -17,36 +17,36 @@ class Entry
     private $location;
 
     /**
-     * @var Priority|null
-     */
-    private $priority;
-
-    /**
      * @var ChangeFrequency|null
      */
     private $changeFrequency;
 
     /**
-     * @var DateTime|null
+     * @var LastModified|null
      */
     private $lastModified;
 
     /**
+     * @var Priority|null
+     */
+    private $priority;
+
+    /**
      * @param Location|null        $location
-     * @param Priority|null        $priority
      * @param ChangeFrequency|null $changeFrequency
-     * @param DateTime|null        $lastModified
+     * @param LastModified|null    $lastModified
+     * @param Priority|null        $priority
      */
     public function __construct(
         Location $location,
-        Priority $priority = null,
         ChangeFrequency $changeFrequency = null,
-        DateTime $lastModified = null
+        LastModified $lastModified = null,
+        Priority $priority = null
     ) {
         $this->location = $location;
-        $this->priority = $priority;
         $this->changeFrequency = $changeFrequency;
         $this->lastModified = $lastModified;
+        $this->priority = $priority;
     }
 
     /**
@@ -58,14 +58,6 @@ class Entry
     }
 
     /**
-     * @return Priority|null
-     */
-    public function getPriority(): ?Priority
-    {
-        return $this->priority;
-    }
-
-    /**
      * @return ChangeFrequency|null
      */
     public function getChangeFrequency(): ?ChangeFrequency
@@ -74,10 +66,18 @@ class Entry
     }
 
     /**
-     * @return DateTime|null
+     * @return LastModified|null
      */
-    public function getLastModified(): ?DateTime
+    public function getLastModified(): ?LastModified
     {
         return $this->lastModified;
+    }
+
+    /**
+     * @return Priority|null
+     */
+    public function getPriority(): ?Priority
+    {
+        return $this->priority;
     }
 }

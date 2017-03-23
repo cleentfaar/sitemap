@@ -29,9 +29,7 @@ class ProductType implements TypeInterface
 
         foreach ($products as $product) {
             yield new Entry(
-                new Entry\Location(sprintf('https://www.acme.com/product/%d', $product['id'])),
-                new Entry\Priority(0.7),
-                Entry\ChangeFrequency::daily()
+                new Entry\Location(sprintf('https://www.acme.com/product/%d', $product['id'])), Entry\ChangeFrequency::daily(), new Entry\Priority(0.7)
             );
         }
     }

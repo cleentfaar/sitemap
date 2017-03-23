@@ -1,13 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CL\Sitemap\Writer;
 
-use CL\Sitemap\Type\TypeInterface;
+use CL\Sitemap\Entry;
+use CL\Sitemap\Exception\EntryLimitReachedException;
+use CL\Sitemap\Exception\SizeLimitReachedException;
 use Gaufrette\Filesystem;
 use Gaufrette\Stream;
-use Symfony\Component\HttpFoundation\File\File;
+use Gaufrette\StreamMode;
+use RuntimeException;
 
-class IndexWriter
+class IndexWriter implements WriterInterface
 {
     const DEFAULT_INDEX_FILENAME = 'index';
 
@@ -19,7 +24,12 @@ class IndexWriter
     /**
      * @var string
      */
-    private $indexFilename;
+    private $path;
+
+    /**
+     * @var int[]
+     */
+    private $entriesAdded = [];
 
     /**
      * @var Stream|null
@@ -27,85 +37,258 @@ class IndexWriter
     private $stream;
 
     /**
+     * @var bool
+     */
+    private $started = false;
+
+    /**
+     * @var bool
+     */
+    private $finished = false;
+
+    /**
+     * @var int
+     */
+    private $maxEntryLimit;
+
+    /**
+     * @var int
+     */
+    private $maxSizeLimit;
+
+    /**
      * @param Filesystem  $filesystem
-     * @param string|null $indexFilename
+     * @param string|null $indexFilename The name of the index filename. NOTE: If you are worried about competitors
+     *                                   trying to map your SEO choices, you should make this as unique as possible and
+     *                                   manually submit it's URL to search engines. If you are not a high-traffic site
+     *                                   in a competitive market, the default 'sitemap' is fine.
+     * @param int|null    $maxEntryLimit
+     * @param float|null  $maxSizeLimit
      */
-    public function __construct(Filesystem $filesystem, string $indexFilename = null)
-    {
+    public function __construct(
+        Filesystem $filesystem,
+        string $indexFilename = null,
+        int $maxEntryLimit = null,
+        float $maxSizeLimit = null
+    ) {
+        $indexFilename = $indexFilename ?: self::DEFAULT_INDEX_FILENAME;
+        $maxEntryLimit = $maxEntryLimit ?: self::DEFAULT_MAX_NUMBER_OF_ENTRIES;
+        $maxSizeLimit = $maxSizeLimit ?: self::DEFAULT_MAX_FILESIZE;
+
         $this->filesystem = $filesystem;
-        $this->indexFilename = $indexFilename ?: self::DEFAULT_INDEX_FILENAME;
+        $this->path = sprintf(
+            '%s.%s',
+            $indexFilename,
+            self::TEMPORARY_EXTENSION
+        );
+        $this->maxEntryLimit = $maxEntryLimit;
+        $this->maxSizeLimit = $maxSizeLimit;
     }
 
-    /**
-     * @param TypeInterface $type
-     * @param string                  $path
-     */
-    public function write(TypeInterface $type, $path)
+    public function start()
     {
-        $pathToIndex = $this->getTemporaryPathToIndex();
+        $this->assertCanStart();
 
-        if (!isset($this->stream)) {
-            $this->stream = fopen($pathToIndex, 'w+');
-        }
+        $this->started = true;
+        $this->finished = false;
 
-        $fileModified = '@' . filemtime($path);
-        $fileName = basename(rtrim($path, '.tmp'));
-        $content = $this->templating->render('sitemap/index/sitemap.xml.twig', [
-            'name' => $type->getName(),
-            'file' => $fileName,
-            'last_modified' => new \DateTime($fileModified),
-        ]);
-
-        fwrite($this->stream, $content);
+        $this->stream = $this->createStream();
     }
 
     /**
-     * @return bool
+     * @inheritdoc
      */
+    public function write(Entry $entry)
+    {
+        $this->assertCanWrite();
+        $this->assertEntryLimitNotReached();
+        $this->assertSizeLimitNotReached();
+
+        $this->stream->write($this->renderEntry($entry));
+
+        $this->incrementEntriesAdded();
+    }
+
     public function finish()
     {
-        if (!$this->stream) {
-            return false;
+        $this->assertCanFinish();
+
+        $this->stream->close();
+
+        $newContent = '';
+        $newContent .= $this->renderHeader();
+        $newContent .= $this->filesystem->read($this->path);
+        $newContent .= $this->renderFooter();
+
+        $this->filesystem->write($this->path, $newContent, true);
+
+        // remove all current xml files for this type
+        $existingIndexPath = $this->replaceExtension($this->path, self::TEMPORARY_EXTENSION, self::PERMANENT_EXTENSION);
+
+        if ($this->filesystem->has($existingIndexPath)) {
+            $this->filesystem->delete($existingIndexPath);
         }
 
-        fclose($this->stream);
+        $this->filesystem->rename($this->path, $existingIndexPath);
 
-        $tempPathToIndex = $this->getTemporaryPathToIndex();
+        $this->filesystem->clearFileRegister();
 
-        if (!file_exists($tempPathToIndex)) {
-            // no writes done, stop here
-            return false;
+        $this->finished = true;
+    }
+
+    /**
+     * @return Stream
+     */
+    private function createStream(): Stream
+    {
+        $handle = $this->filesystem->createStream($this->path);
+
+        if (!$handle->open(new StreamMode('a'))) {
+            throw new RuntimeException(sprintf('Could not open stream for path: %s', $this->path));
         }
 
-        $content = $this->templating->render('sitemap/index/header.xml.twig');
-        $content .= file_get_contents($tempPathToIndex);
-        $content .= $this->templating->render('sitemap/index/footer.xml.twig');
-
-        file_put_contents($tempPathToIndex, $content);
-
-        $pathToIndex = $this->getPathToIndex();
-
-        $file = new File($tempPathToIndex, false);
-        $file->move(dirname($pathToIndex), basename($pathToIndex));
-
-        $this->stream = null;
-
-        return true;
+        return $handle;
     }
 
     /**
      * @return string
      */
-    public function getPathToIndex()
+    private function renderHeader(): string
     {
-        return sprintf('%s.xml', $this->indexFilename);
+        return <<<EOL
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+EOL;
+    }
+
+    /**
+     * @param Entry $entry
+     *
+     * @return string
+     */
+    private function renderEntry(Entry $entry): string
+    {
+        $location = $entry->getLocation()->toString();
+        $changeFrequency = $entry->getChangeFrequency() ? $entry->getChangeFrequency()->toString() : null;
+        $priority = $entry->getPriority() ? $entry->getPriority()->toFloat() : null;
+        $lastModified = $entry->getLastModified() ? $entry->getLastModified()->toString() : null;
+
+        $entryXml = <<<EOL
+<sitemap>
+    <loc>$location</loc>
+EOL;
+
+        if ($changeFrequency) {
+            $entryXml .= <<<EOL
+    <changefreq>$changeFrequency</changefreq>
+EOL;
+        }
+
+        if ($priority) {
+            $entryXml .= <<<EOL
+    <priority>$priority</priority>
+EOL;
+        }
+
+        if ($lastModified) {
+            $entryXml .= <<<EOL
+    <lastmod>$lastModified</lastmod>
+EOL;
+        }
+
+        $entryXml .= <<<EOL
+</sitemap>
+EOL;
+
+        return $entryXml;
     }
 
     /**
      * @return string
      */
-    private function getTemporaryPathToIndex()
+    private function renderFooter(): string
     {
-        return sprintf('%s.xml.tmp', $this->indexFilename);
+        return <<<EOL
+</sitemapindex>
+
+EOL;
+    }
+
+    private function assertEntryLimitNotReached()
+    {
+        if (!isset($this->entriesAdded[$this->path])) {
+            return false;
+        }
+
+        if ($this->entriesAdded[$this->path] >= $this->maxEntryLimit) {
+            throw EntryLimitReachedException::withLimit($this->maxEntryLimit, $this->path);
+        }
+    }
+
+    private function assertSizeLimitNotReached()
+    {
+        $size = $this->stream->stat()['size'] / (1024 * 1024);
+
+        if ($size >= $this->maxSizeLimit) {
+            throw SizeLimitReachedException::withLimit($this->maxSizeLimit, $this->path);
+        }
+    }
+
+    /**
+     * @param string $path
+     * @param string $currentExtension
+     * @param string $newExtension
+     *
+     * @return string
+     */
+    private function replaceExtension(string $path, string $currentExtension, string $newExtension): string
+    {
+        if (mb_substr($path, -(mb_strlen($currentExtension))) !== $currentExtension) {
+            throw new \InvalidArgumentException(sprintf(
+                'Can\'t replace the extension, the given path (%s) does not have that extension (%s)',
+                $path,
+                $currentExtension
+            ));
+        }
+
+        $newPath = mb_substr($path, 0, -(mb_strlen($currentExtension)));
+        $newPath .= $newExtension;
+
+        return $newPath;
+    }
+
+    private function incrementEntriesAdded(): void
+    {
+        if (!isset($this->entriesAdded[$this->path])) {
+            $this->entriesAdded[$this->path] = 0;
+        }
+
+        ++$this->entriesAdded[$this->path];
+    }
+
+    private function assertCanFinish(): void
+    {
+        if ($this->finished) {
+            throw new RuntimeException('You must call start() first');
+        }
+
+        if ($this->finished) {
+            throw new RuntimeException('Already finished, you need to call start() again');
+        }
+    }
+
+    private function assertCanWrite(): void
+    {
+        if (!$this->started) {
+            throw new RuntimeException('You must call start() first');
+        }
+    }
+
+    private function assertCanStart(): void
+    {
+        if ($this->started) {
+            throw new RuntimeException('Already started');
+        }
     }
 }

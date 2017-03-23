@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CL\Sitemap;
 
+use CL\Sitemap\Exception\TypeNotRegisteredException;
 use CL\Sitemap\Type\TypeInterface;
 
 class TypeRegistry
@@ -29,16 +30,12 @@ class TypeRegistry
     public function get(string $name): TypeInterface
     {
         if (!array_key_exists($name, $this->types)) {
-            $sitemaps = $this->types;
+            $availableTypeNames = array_keys($this->types);
 
             // sort for readability
-            ksort($sitemaps);
+            sort($availableTypeNames);
 
-            throw new \InvalidArgumentException(sprintf(
-                'There is no type registered with the name "%s" (available types: "%s")',
-                $name,
-                implode('", "', array_keys($sitemaps))
-            ));
+            throw TypeNotRegisteredException::withName($name, $availableTypeNames);
         }
 
         return $this->types[$name];

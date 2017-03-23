@@ -21,10 +21,9 @@ class TypeWriterTest extends TestCase
     const PRIORITY = 0.5;
     const URL = 'https://www.acme.com/product/1234';
     const LAST_MODIFIED = '2017-01-01';
-    /**
-     * @var string
-     */
     const TYPE_NAME = 'my_type';
+    const MAX_ENTRY_LIMIT = 49000;
+    const MAX_SIZE_LIMIT = 9;
 
     /**
      * @var Filesystem
@@ -49,7 +48,12 @@ class TypeWriterTest extends TestCase
         $this->filesystem = new Filesystem(new InMemory());
         $this->type = $this->prophesize(TypeInterface::class);
         $this->type->getName()->willReturn(self::TYPE_NAME);
-        $this->typeWriter = new TypeWriter($this->filesystem, $this->type->reveal());
+        $this->typeWriter = new TypeWriter(
+            $this->filesystem,
+            $this->type->reveal(),
+            self::MAX_ENTRY_LIMIT,
+            self::MAX_SIZE_LIMIT
+        );
     }
 
     /**
@@ -78,7 +82,7 @@ class TypeWriterTest extends TestCase
     /**
      * @test
      */
-    public function it_can_write_an_entry()
+    public function it_can_write_an_entry_without_optional_fields()
     {
         $entry = new Entry(
             new Entry\Location(self::URL)
@@ -102,10 +106,7 @@ class TypeWriterTest extends TestCase
     public function it_can_write_an_entry_with_optional_fields()
     {
         $entry = new Entry(
-            new Entry\Location(self::URL),
-            new Entry\Priority(self::PRIORITY),
-            Entry\ChangeFrequency::daily(),
-            new DateTime(self::LAST_MODIFIED)
+            new Entry\Location(self::URL), Entry\ChangeFrequency::daily(), new Entry\LastModified(new DateTime(self::LAST_MODIFIED)), new Entry\Priority(self::PRIORITY)
         );
 
         $this->startWriteAndFinish($entry);
@@ -116,6 +117,7 @@ class TypeWriterTest extends TestCase
 
         static::assertContains('<loc>' . self::URL . '</loc>', $content);
         static::assertContains('<changefreq>daily</changefreq>', $content);
+        static::assertContains('<priority>'.self::PRIORITY.'</priority>', $content);
         static::assertContains('<lastmod>'.self::LAST_MODIFIED.'</lastmod>', $content);
     }
 
@@ -124,10 +126,18 @@ class TypeWriterTest extends TestCase
      */
     public function it_can_rotate_when_url_limit_is_reached()
     {
+        $this->typeWriter = new TypeWriter(
+            $this->filesystem,
+            $this->type->reveal(),
+            1,
+            self::MAX_SIZE_LIMIT
+        );
+
         $entry = new Entry(
             new Entry\Location(self::URL),
-            new Entry\Priority(self::PRIORITY),
-            Entry\ChangeFrequency::daily()
+            Entry\ChangeFrequency::daily(),
+            new Entry\LastModified(new DateTime(self::LAST_MODIFIED)),
+            new Entry\Priority(self::PRIORITY)
         );
 
         $temporaryPath1 = $this->getTemporaryPath(0);
@@ -135,9 +145,7 @@ class TypeWriterTest extends TestCase
 
         $this->typeWriter->start();
 
-        for ($x = 0; $x < TypeWriter::DEFAULT_MAX_NUMBER_OF_URLS; ++$x) {
-            $this->typeWriter->write($entry);
-        }
+        $this->typeWriter->write($entry);
 
         static::assertTrue($this->filesystem->has($temporaryPath1), 'The first (temporary) part-file should exist');
         static::assertFalse($this->filesystem->has($temporaryPath2), 'The second (temporary) part-file should not exist yet');
@@ -163,20 +171,25 @@ class TypeWriterTest extends TestCase
      */
     public function it_can_rotate_when_size_limit_is_reached()
     {
+        $this->typeWriter = new TypeWriter(
+            $this->filesystem,
+            $this->type->reveal(),
+            self::MAX_ENTRY_LIMIT,
+            0.00001
+        );
+
         $entry = new Entry(
             new Entry\Location(self::URL),
-            new Entry\Priority(self::PRIORITY),
-            Entry\ChangeFrequency::daily()
+            Entry\ChangeFrequency::daily(),
+            new Entry\LastModified(new DateTime(self::LAST_MODIFIED)),
+            new Entry\Priority(self::PRIORITY)
         );
 
         $temporaryPath1 = $this->getTemporaryPath(0);
         $temporaryPath2 = $this->getTemporaryPath(1);
 
         $this->typeWriter->start();
-
-        for ($x = 0; $x < TypeWriter::DEFAULT_MAX_NUMBER_OF_URLS; ++$x) {
-            $this->typeWriter->write($entry);
-        }
+        $this->typeWriter->write($entry);
 
         static::assertTrue($this->filesystem->has($temporaryPath1), 'The first (temporary) part-file should exist');
         static::assertFalse($this->filesystem->has($temporaryPath2), 'The second (temporary) part-file should not exist yet');
