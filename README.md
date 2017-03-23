@@ -1,6 +1,6 @@
 # Sitemap
 
-Flexible library for generating XML sitemaps from any source.
+Flexible library for generating XML sitemaps from any source to any filesystem.
 
 For more information about the actual XML protocol, check out 
 the [sitemap.org documentation](https://sitemap.org)
