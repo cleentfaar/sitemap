@@ -7,6 +7,7 @@ namespace CL\Sitemap\Writer;
 use CL\Sitemap\Entry;
 use CL\Sitemap\Exception\EntryLimitReachedException;
 use CL\Sitemap\Exception\SizeLimitReachedException;
+use CL\Sitemap\Renderer;
 use Gaufrette\Filesystem;
 use Gaufrette\Stream;
 use Gaufrette\StreamMode;
@@ -57,11 +58,13 @@ class IndexWriter implements WriterInterface
     private $maxSizeLimit;
 
     /**
+     * @var Renderer
+     */
+    private $renderer;
+
+    /**
      * @param Filesystem  $filesystem
-     * @param string|null $indexFilename The name of the index filename. NOTE: If you are worried about competitors
-     *                                   trying to map your SEO choices, you should make this as unique as possible and
-     *                                   manually submit it's URL to search engines. If you are not a high-traffic site
-     *                                   in a competitive market, the default 'sitemap' is fine.
+     * @param string|null $indexFilename
      * @param int|null    $maxEntryLimit
      * @param float|null  $maxSizeLimit
      */
@@ -83,6 +86,7 @@ class IndexWriter implements WriterInterface
         );
         $this->maxEntryLimit = $maxEntryLimit;
         $this->maxSizeLimit = $maxSizeLimit;
+        $this->renderer = new Renderer('sitemapindex');
     }
 
     public function start()
@@ -104,7 +108,7 @@ class IndexWriter implements WriterInterface
         $this->assertEntryLimitNotReached();
         $this->assertSizeLimitNotReached();
 
-        $this->stream->write($this->renderEntry($entry));
+        $this->stream->write($this->renderer->renderEntry($entry));
 
         $this->incrementEntriesAdded();
     }
@@ -116,9 +120,9 @@ class IndexWriter implements WriterInterface
         $this->stream->close();
 
         $newContent = '';
-        $newContent .= $this->renderHeader();
+        $newContent .= $this->renderer->renderHeader();
         $newContent .= $this->filesystem->read($this->path);
-        $newContent .= $this->renderFooter();
+        $newContent .= $this->renderer->renderFooter();
 
         $this->filesystem->write($this->path, $newContent, true);
 
@@ -148,71 +152,6 @@ class IndexWriter implements WriterInterface
         }
 
         return $handle;
-    }
-
-    /**
-     * @return string
-     */
-    private function renderHeader(): string
-    {
-        return <<<EOL
-<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-
-EOL;
-    }
-
-    /**
-     * @param Entry $entry
-     *
-     * @return string
-     */
-    private function renderEntry(Entry $entry): string
-    {
-        $location = $entry->getLocation()->toString();
-        $changeFrequency = $entry->getChangeFrequency() ? $entry->getChangeFrequency()->toString() : null;
-        $priority = $entry->getPriority() ? $entry->getPriority()->toFloat() : null;
-        $lastModified = $entry->getLastModified() ? $entry->getLastModified()->toString() : null;
-
-        $entryXml = <<<EOL
-<sitemap>
-    <loc>$location</loc>
-EOL;
-
-        if ($changeFrequency) {
-            $entryXml .= <<<EOL
-    <changefreq>$changeFrequency</changefreq>
-EOL;
-        }
-
-        if ($priority) {
-            $entryXml .= <<<EOL
-    <priority>$priority</priority>
-EOL;
-        }
-
-        if ($lastModified) {
-            $entryXml .= <<<EOL
-    <lastmod>$lastModified</lastmod>
-EOL;
-        }
-
-        $entryXml .= <<<EOL
-</sitemap>
-EOL;
-
-        return $entryXml;
-    }
-
-    /**
-     * @return string
-     */
-    private function renderFooter(): string
-    {
-        return <<<EOL
-</sitemapindex>
-
-EOL;
     }
 
     private function assertEntryLimitNotReached()

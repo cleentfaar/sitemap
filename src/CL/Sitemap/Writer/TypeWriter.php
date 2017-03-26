@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CL\Sitemap\Writer;
 
 use CL\Sitemap\Entry;
+use CL\Sitemap\Renderer;
 use CL\Sitemap\Type\TypeInterface;
 use Gaufrette\Filesystem;
 use Gaufrette\Stream;
@@ -74,9 +75,9 @@ class TypeWriter implements WriterInterface
     private $maxSizeLimit;
 
     /**
-     * @var string
+     * @var Renderer
      */
-    private $encoding;
+    private $renderer;
 
     /**
      * @param Filesystem    $filesystem
@@ -103,7 +104,7 @@ class TypeWriter implements WriterInterface
         $this->path = $this->getPath(0);
         $this->maxEntryLimit = $maxEntryLimit;
         $this->maxSizeLimit = $maxSizeLimit;
-        $this->encoding = $encoding;
+        $this->renderer = new Renderer('urlset', $encoding);
     }
 
     /**
@@ -134,7 +135,7 @@ class TypeWriter implements WriterInterface
             $this->rotate();
         }
 
-        $this->stream->write($this->renderEntry($entry));
+        $this->stream->write($this->renderer->renderEntry($entry));
 
         if (!in_array($this->path, $this->writtenPaths)) {
             $this->writtenPaths[] = $this->path;
@@ -214,56 +215,6 @@ class TypeWriter implements WriterInterface
     }
 
     /**
-     * @return string
-     */
-    private function renderHeader(): string
-    {
-        return sprintf(
-            "<?xml version=\"1.0\" encoding=\"%s\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">",
-            $this->encoding
-        );
-    }
-
-    /**
-     * @param Entry $entry
-     *
-     * @return string
-     */
-    private function renderEntry(Entry $entry): string
-    {
-        $location = $entry->getLocation()->toString();
-        $changeFrequency = $entry->getChangeFrequency() ? $entry->getChangeFrequency()->toString() : null;
-        $priority = $entry->getPriority() ? $entry->getPriority()->toFloat() : null;
-        $lastModified = $entry->getLastModified() ? $entry->getLastModified()->toString() : null;
-
-        $entryXml = "\n    <url><loc>$location</loc>";
-
-        if ($changeFrequency) {
-            $entryXml .= "<changefreq>$changeFrequency</changefreq>";
-        }
-
-        if ($priority) {
-            $entryXml .= "<priority>$priority</priority>";
-        }
-
-        if ($lastModified) {
-            $entryXml .= "<lastmod>$lastModified</lastmod>";
-        }
-
-        $entryXml .= "</url>";
-
-        return $entryXml;
-    }
-
-    /**
-     * @return string
-     */
-    private function renderFooter(): string
-    {
-        return "\n</urlset>\n";
-    }
-
-    /**
      * @return bool
      */
     private function urlLimitReached(): bool
@@ -321,9 +272,9 @@ class TypeWriter implements WriterInterface
     {
         foreach ($this->writtenPaths as $path) {
             $newContent = '';
-            $newContent .= $this->renderHeader();
+            $newContent .= $this->renderer->renderHeader();
             $newContent .= $this->filesystem->read($path);
-            $newContent .= $this->renderFooter();
+            $newContent .= $this->renderer->renderFooter();
 
             $this->filesystem->write($path, $newContent, true);
         }
