@@ -94,11 +94,6 @@ class TypeWriter implements WriterInterface
         string $encoding = 'UTF-8'
     ) {
         $this->rootDir = $type->getName();
-
-        if (!$filesystem->has($this->rootDir)) {
-            $filesystem->write($this->rootDir, '');
-        }
-
         $this->filesystem = $filesystem;
         $this->type = $type;
         $this->path = $this->getPath(0);
