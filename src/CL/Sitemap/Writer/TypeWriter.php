@@ -74,16 +74,23 @@ class TypeWriter implements WriterInterface
     private $maxSizeLimit;
 
     /**
+     * @var string
+     */
+    private $encoding;
+
+    /**
      * @param Filesystem    $filesystem
      * @param TypeInterface $type
      * @param int           $maxEntryLimit
      * @param float         $maxSizeLimit
+     * @param string        $encoding
      */
     public function __construct(
         Filesystem $filesystem,
         TypeInterface $type,
         int $maxEntryLimit = self::DEFAULT_MAX_NUMBER_OF_ENTRIES,
-        float $maxSizeLimit = self::DEFAULT_MAX_FILESIZE
+        float $maxSizeLimit = self::DEFAULT_MAX_FILESIZE,
+        string $encoding = 'UTF-8'
     ) {
         $this->rootDir = $type->getName();
 
@@ -96,6 +103,7 @@ class TypeWriter implements WriterInterface
         $this->path = $this->getPath(0);
         $this->maxEntryLimit = $maxEntryLimit;
         $this->maxSizeLimit = $maxSizeLimit;
+        $this->encoding = $encoding;
     }
 
     /**
@@ -210,11 +218,10 @@ class TypeWriter implements WriterInterface
      */
     private function renderHeader(): string
     {
-        return <<<EOL
-<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-
-EOL;
+        return sprintf(
+            "<?xml version=\"1.0\" encoding=\"%s\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">",
+            $this->encoding
+        );
     }
 
     /**
@@ -229,32 +236,21 @@ EOL;
         $priority = $entry->getPriority() ? $entry->getPriority()->toFloat() : null;
         $lastModified = $entry->getLastModified() ? $entry->getLastModified()->toString() : null;
 
-        $entryXml = <<<EOL
-<url>
-    <loc>$location</loc>
-EOL;
+        $entryXml = "\n    <url><loc>$location</loc>";
 
         if ($changeFrequency) {
-            $entryXml .= <<<EOL
-    <changefreq>$changeFrequency</changefreq>
-EOL;
+            $entryXml .= "<changefreq>$changeFrequency</changefreq>";
         }
 
         if ($priority) {
-            $entryXml .= <<<EOL
-    <priority>$priority</priority>
-EOL;
+            $entryXml .= "<priority>$priority</priority>";
         }
 
         if ($lastModified) {
-            $entryXml .= <<<EOL
-    <lastmod>$lastModified</lastmod>
-EOL;
+            $entryXml .= "<lastmod>$lastModified</lastmod>";
         }
 
-        $entryXml .= <<<EOL
-</url>
-EOL;
+        $entryXml .= "</url>";
 
         return $entryXml;
     }
@@ -264,10 +260,7 @@ EOL;
      */
     private function renderFooter(): string
     {
-        return <<<EOL
-</urlset>
-
-EOL;
+        return "\n</urlset>\n";
     }
 
     /**
